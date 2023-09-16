@@ -38,20 +38,46 @@ export interface TypeChatLanguageModel {
  * If none of these key variables are defined, an exception is thrown.
  * @returns An instance of `TypeChatLanguageModel`.
  */
-export function createLanguageModel(env: Record<string, string | undefined>): TypeChatLanguageModel {
+export function createLanguageModel(
+    env: Record<string, string | undefined>,
+): TypeChatLanguageModel {
     if (env.OPENAI_API_KEY) {
-        const apiKey = env.OPENAI_API_KEY ?? missingEnvironmentVariable("OPENAI_API_KEY");
-        const model = env.OPENAI_MODEL ?? missingEnvironmentVariable("OPENAI_MODEL");
-        const endPoint = env.OPENAI_ENDPOINT ?? "https://api.openai.com/v1/chat/completions";
+        const apiKey =
+            env.OPENAI_API_KEY ?? missingEnvironmentVariable("OPENAI_API_KEY");
+        const model =
+            env.OPENAI_MODEL ?? missingEnvironmentVariable("OPENAI_MODEL");
+        const endPoint =
+            env.OPENAI_ENDPOINT ?? "https://api.openai.com/v1/chat/completions";
         const org = env.OPENAI_ORGANIZATION ?? "";
         return createOpenAILanguageModel(apiKey, model, endPoint, org);
     }
     if (env.AZURE_OPENAI_API_KEY) {
-        const apiKey = env.AZURE_OPENAI_API_KEY ?? missingEnvironmentVariable("AZURE_OPENAI_API_KEY");
-        const endPoint = env.AZURE_OPENAI_ENDPOINT ?? missingEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
+        const apiKey =
+            env.AZURE_OPENAI_API_KEY ??
+            missingEnvironmentVariable("AZURE_OPENAI_API_KEY");
+        const endPoint =
+            env.AZURE_OPENAI_ENDPOINT ??
+            missingEnvironmentVariable("AZURE_OPENAI_ENDPOINT");
         return createAzureOpenAILanguageModel(apiKey, endPoint);
     }
-    missingEnvironmentVariable("OPENAI_API_KEY or AZURE_OPENAI_API_KEY");
+    if (env.COHERE_API_KEY) {
+        const apiKey =
+            env.COHERE_API_KEY ?? missingEnvironmentVariable("COHERE_API_KEY");
+        const endPoint =
+            env.COHERE_ENDPOINT ?? "https://api.cohere.ai/v1/generate";
+        const maxTokens = env.MAX_TOKENS ?? "500";
+
+        return createCohereLanguageModel(
+            apiKey,
+            "command",
+            endPoint,
+            maxTokens,
+        );
+    }
+
+    missingEnvironmentVariable(
+        "OPENAI_API_KEY or AZURE_OPENAI_API_KEY or COHERE_API_KEY",
+    );
 }
 
 /**
@@ -62,13 +88,47 @@ export function createLanguageModel(env: Record<string, string | undefined>): Ty
  * @param org The OpenAI organization id.
  * @returns An instance of `TypeChatLanguageModel`.
  */
-export function createOpenAILanguageModel(apiKey: string, model: string, endPoint = "https://api.openai.com/v1/chat/completions", org = ""): TypeChatLanguageModel {
-    return createAxiosLanguageModel(endPoint, {
-        headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "OpenAI-Organization": org
-         }
-    }, { model });
+export function createOpenAILanguageModel(
+    apiKey: string,
+    model: string,
+    endPoint: string = "https://api.openai.com/v1/chat/completions",
+    org: string = "",
+): TypeChatLanguageModel {
+    return createAxiosLanguageModel(
+        endPoint,
+        {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "OpenAI-Organization": org,
+            },
+        },
+        { model },
+    );
+}
+
+/**
+ * Creates a language model encapsulation of a Cohere REST API endpoint.
+ * @param apiKey The Cohere API key.
+ * @param model The model name.
+ * @param endPoint The URL of the Cohere REST API endpoint. Defaults to "https://api.openai.com/v1/chat/completions".
+ * @returns An instance of `TypeChatLanguageModel`.
+ */
+export function createCohereLanguageModel(
+    apiKey: string,
+    model: string,
+    endPoint: string = "https://api.cohere.ai/v1/generate",
+    maxTokens: string = "500",
+): TypeChatLanguageModel {
+    return createAxiosLanguageModel(
+        endPoint,
+        {
+            headers: {
+                Authorization: `BEARER ${apiKey}`,
+            },
+        },
+        { model, max_tokens: parseInt(maxTokens) },
+        false,
+    );
 }
 
 /**
@@ -79,17 +139,29 @@ export function createOpenAILanguageModel(apiKey: string, model: string, endPoin
  * @param apiKey The Azure OpenAI API key.
  * @returns An instance of `TypeChatLanguageModel`.
  */
-export function createAzureOpenAILanguageModel(apiKey: string, endPoint: string,): TypeChatLanguageModel {
-    return createAxiosLanguageModel(endPoint, { headers: { "api-key": apiKey } }, {});
+export function createAzureOpenAILanguageModel(
+    apiKey: string,
+    endPoint: string,
+): TypeChatLanguageModel {
+    return createAxiosLanguageModel(
+        endPoint,
+        { headers: { "api-key": apiKey } },
+        {},
+    );
 }
 
 /**
  * Common implementation of language model encapsulation of an OpenAI REST API endpoint.
  */
-function createAxiosLanguageModel(url: string, config: object, defaultParams: Record<string, string>) {
+function createAxiosLanguageModel(
+    url: string,
+    config: object,
+    defaultParams: Record<string, string | number>,
+    isOpenAI: boolean = true,
+) {
     const client = axios.create(config);
     const model: TypeChatLanguageModel = {
-        complete
+        complete,
     };
     return model;
 
@@ -100,16 +172,33 @@ function createAxiosLanguageModel(url: string, config: object, defaultParams: Re
         while (true) {
             const params = {
                 ...defaultParams,
-                messages: [{ role: "user", content: prompt }],
+                // TODO(michaelfromyeg): move this logic to the other calls
+                ...(isOpenAI
+                    ? { messages: [{ role: "user", content: prompt }], n: 1 }
+                    : {
+                          prompt,
+                          k: 0,
+                          stop_sequences: [],
+                          return_likelihoods: "NONE",
+                      }),
                 temperature: 0,
-                n: 1
             };
-            const result = await client.post(url, params, { validateStatus: status => true });
+
+            const result = await client.post(url, params, {
+                validateStatus: (status) => true,
+            });
             if (result.status === 200) {
-                return success(result.data.choices[0].message?.content ?? "");
+                return isOpenAI
+                    ? success(result.data.choices[0].message?.content ?? "")
+                    : success(result.data.generations[0].text);
             }
-            if (!isTransientHttpError(result.status) || retryCount >= retryMaxAttempts) {
-                return error(`REST API error ${result.status}: ${result.statusText}`);
+            if (
+                !isTransientHttpError(result.status) ||
+                retryCount >= retryMaxAttempts
+            ) {
+                return error(
+                    `REST API error ${result.status}: ${result.statusText}`,
+                );
             }
             await sleep(retryPauseMs);
             retryCount++;
