@@ -18,14 +18,14 @@ export interface TypeChatJsonTranslator<T extends object> {
      * A boolean indicating whether to attempt repairing JSON objects that fail to validate. The default is `true`,
      * but an application can set the property to `false` to disable repair attempts.
      */
-    attemptRepair:  boolean;
+    attemptRepair: boolean;
     /**
      * A boolean indicating whether to delete properties with null values from parsed JSON objects. Some language
      * models (e.g. gpt-3.5-turbo) have a tendency to assign null values to optional properties instead of omitting
      * them. The default for this property is `false`, but an application can set the property to `true` for schemas
      * that don't permit null values.
      */
-    stripNulls:  boolean;
+    stripNulls: boolean;
     /**
      * Creates an AI language model prompt from the given request. This function is called by `completeAndValidate`
      * to obtain the prompt. An application can assign a new function to provide a different prompt.
@@ -71,7 +71,11 @@ export interface TypeChatJsonTranslator<T extends object> {
  * @param typeName The name of the JSON target type in the schema.
  * @returns A `TypeChatJsonTranslator<T>` instance.
  */
-export function createJsonTranslator<T extends object>(model: TypeChatLanguageModel, schema: string, typeName: string): TypeChatJsonTranslator<T> {
+export function createJsonTranslator<T extends object>(
+    model: TypeChatLanguageModel,
+    schema: string,
+    typeName: string,
+): TypeChatJsonTranslator<T> {
     const validator = createJsonValidator<T>(schema, typeName);
     const typeChat: TypeChatJsonTranslator<T> = {
         model,
@@ -81,22 +85,26 @@ export function createJsonTranslator<T extends object>(model: TypeChatLanguageMo
         createRequestPrompt,
         createRepairPrompt,
         validateInstance: success,
-        translate
+        translate,
     };
     return typeChat;
 
     function createRequestPrompt(request: string) {
-        return `You are a service that translates user requests into JSON objects of type "${validator.typeName}" according to the following TypeScript definitions:\n` +
+        return (
+            `You are a service that translates user requests into JSON objects of type "${validator.typeName}" according to the following TypeScript definitions:\n` +
             `\`\`\`\n${validator.schema}\`\`\`\n` +
             `The following is a user request:\n` +
             `"""\n${request}\n"""\n` +
-            `The following is the user request translated into a JSON object with 2 spaces of indentation and no properties with the value undefined:\n`;
+            `Do not put a trailing comma after the last property. The following is the user request translated into a valid JSON object with 2 spaces of indentation and no properties with the value undefined:\n`
+        );
     }
 
     function createRepairPrompt(validationError: string) {
-        return `The JSON object is invalid for the following reason:\n` +
+        return (
+            `The JSON object is invalid for the following reason:\n` +
             `"""\n${validationError}\n"""\n` +
-            `The following is a revised JSON object:\n`;
+            `The following is a revised JSON object:\n`
+        );
     }
 
     async function translate(request: string) {
@@ -115,7 +123,9 @@ export function createJsonTranslator<T extends object>(model: TypeChatLanguageMo
             }
             const jsonText = responseText.slice(startIndex, endIndex + 1);
             const schemaValidation = validator.validate(jsonText);
-            const validation = schemaValidation.success ? typeChat.validateInstance(schemaValidation.data) : schemaValidation;
+            const validation = schemaValidation.success
+                ? typeChat.validateInstance(schemaValidation.data)
+                : schemaValidation;
             if (validation.success) {
                 return validation;
             }

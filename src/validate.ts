@@ -1,5 +1,5 @@
-import * as ts from 'typescript';
-import { Result, success, error, Success } from './result';
+import * as ts from "typescript";
+import { Result, success, error, Success } from "./result";
 
 const libText = `interface Array<T> { length: number, [n: number]: T }
 interface Object { toString(): string }
@@ -29,7 +29,7 @@ export interface TypeChatJsonValidator<T extends object> {
      * them. The default for this property is `false`, but an application can set the property to `true` for schemas
      * that don't permit null values.
      */
-    stripNulls:  boolean;
+    stripNulls: boolean;
     /**
      * Transform JSON into TypeScript code for validation. Returns a `Success<string>` object if the conversion is
      * successful, or an `Error` object if the JSON can't be transformed. The returned TypeScript source code is
@@ -54,13 +54,16 @@ export interface TypeChatJsonValidator<T extends object> {
  * @param typeName The name of the JSON target type in the schema.
  * @returns A `TypeChatJsonValidator<T>` instance.
  */
-export function createJsonValidator<T extends object = object>(schema: string, typeName: string): TypeChatJsonValidator<T> {
+export function createJsonValidator<T extends object = object>(
+    schema: string,
+    typeName: string,
+): TypeChatJsonValidator<T> {
     const options = {
         ...ts.getDefaultCompilerOptions(),
         strict: true,
         skipLibCheck: true,
         noLib: true,
-        types: []
+        types: [],
     };
     const rootProgram = createProgramFromModuleText("");
     const validator: TypeChatJsonValidator<T> = {
@@ -68,7 +71,7 @@ export function createJsonValidator<T extends object = object>(schema: string, t
         typeName,
         stripNulls: false,
         createModuleTextFromJson,
-        validate
+        validate,
     };
     return validator;
 
@@ -76,8 +79,7 @@ export function createJsonValidator<T extends object = object>(schema: string, t
         let jsonObject;
         try {
             jsonObject = JSON.parse(jsonText) as object;
-        }
-        catch (e) {
+        } catch (e) {
             return error(e instanceof SyntaxError ? e.message : "JSON parse error");
         }
         if (validator.stripNulls) {
@@ -89,34 +91,44 @@ export function createJsonValidator<T extends object = object>(schema: string, t
         }
         const program = createProgramFromModuleText(moduleResult.data, rootProgram);
         const syntacticDiagnostics = program.getSyntacticDiagnostics();
-        const programDiagnostics = syntacticDiagnostics.length ? syntacticDiagnostics : program.getSemanticDiagnostics();
+        const programDiagnostics = syntacticDiagnostics.length
+            ? syntacticDiagnostics
+            : program.getSemanticDiagnostics();
         if (programDiagnostics.length) {
-            const diagnostics = programDiagnostics.map(d => typeof d.messageText === "string" ? d.messageText : d.messageText.messageText).join("\n");
+            const diagnostics = programDiagnostics
+                .map((d) => (typeof d.messageText === "string" ? d.messageText : d.messageText.messageText))
+                .join("\n");
             return error(diagnostics);
         }
         return success(jsonObject as T);
     }
 
     function createModuleTextFromJson(jsonObject: object) {
-        return success(`import { ${typeName} } from './schema';\nconst json: ${typeName} = ${JSON.stringify(jsonObject, undefined, 2)};\n`);
+        return success(
+            `import { ${typeName} } from './schema';\nconst json: ${typeName} = ${JSON.stringify(
+                jsonObject,
+                undefined,
+                2,
+            )};\n`,
+        );
     }
 
     function createProgramFromModuleText(moduleText: string, oldProgram?: ts.Program) {
         const fileMap = new Map([
             createFileMapEntry("/lib.d.ts", libText),
             createFileMapEntry("/schema.ts", schema),
-            createFileMapEntry("/json.ts", moduleText)
+            createFileMapEntry("/json.ts", moduleText),
         ]);
         const host: ts.CompilerHost = {
-            getSourceFile: fileName => fileMap.get(fileName),
+            getSourceFile: (fileName) => fileMap.get(fileName),
             getDefaultLibFileName: () => "lib.d.ts",
             writeFile: () => {},
             getCurrentDirectory: () => "/",
-            getCanonicalFileName: fileName => fileName,
+            getCanonicalFileName: (fileName) => fileName,
             useCaseSensitiveFileNames: () => true,
             getNewLine: () => "\n",
-            fileExists: fileName => fileMap.has(fileName),
-            readFile: fileName => "",
+            fileExists: (fileName) => fileMap.has(fileName),
+            readFile: (fileName) => "",
         };
         return ts.createProgram(Array.from(fileMap.keys()), options, host, oldProgram);
     }
@@ -137,11 +149,10 @@ function stripNulls(obj: any) {
         const value = obj[k];
         if (value === null) {
             (keysToDelete ??= []).push(k);
-        }
-        else {
+        } else {
             if (Array.isArray(value)) {
-                if (value.some(x => x === null)) {
-                    obj[k] = value.filter(x => x !== null);
+                if (value.some((x) => x === null)) {
+                    obj[k] = value.filter((x) => x !== null);
                 }
             }
             if (typeof value === "object") {

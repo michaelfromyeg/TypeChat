@@ -9,7 +9,11 @@ import readline from "readline/promises";
  * @param inputFileName Input text file name, if any.
  * @param processRequest Async callback function that is invoked for each interactive input or each line in text file.
  */
-export async function processRequests(interactivePrompt: string, inputFileName: string | undefined, processRequest: (request: string) => Promise<void>) {
+export async function processRequests(
+    interactivePrompt: string,
+    inputFileName: string | undefined,
+    processRequest: (request: string) => Promise<void>,
+) {
     if (inputFileName) {
         const lines = fs.readFileSync(inputFileName).toString().split(/\r?\n/);
         for (const line of lines) {
@@ -18,15 +22,16 @@ export async function processRequests(interactivePrompt: string, inputFileName: 
                 await processRequest(line);
             }
         }
-    }
-    else {
-        const stdio = readline.createInterface({ input: process.stdin, output: process.stdout });
+    } else {
+        const stdio = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+        });
         while (true) {
             const input = await stdio.question(interactivePrompt);
             if (input.toLowerCase() === "quit" || input.toLowerCase() === "exit") {
                 break;
-            }
-            else if (input.length) {
+            } else if (input.length) {
                 await processRequest(input);
             }
         }

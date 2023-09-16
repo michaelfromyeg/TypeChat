@@ -35,7 +35,7 @@ export type ResultReference = {
  */
 export type Program = {
     "@steps": FunctionCall[];
-}
+};
 
 /**
  * A function call specifices a function name and a list of argument expressions. Arguments may contain
@@ -70,38 +70,45 @@ export type ResultReference = {
 /**
  * Transforms a JSON program object into an equivalent TypeScript module suitable for type checking.
  * The generated module takes the form:
- * 
+ *
  *   import { API } from "./schema";
  *   function program(api: API) {
  *     const step1 = api.someFunction1(...);
  *     const step2 = api.someFunction2(...);
  *     return api.someFunction3(...);
  *   }
- * 
+ *
  * @param jsonObject A JSON program object.
  * @returns A `Success<string>` with the module source code or an `Error` explaining why the JSON object
  * couldn't be transformed.
  */
 export function createModuleTextFromProgram(jsonObject: object): Result<string> {
     const steps = (jsonObject as Program)["@steps"];
-    if (!(Array.isArray(steps) && steps.every(step => typeof step === "object" && step !== null && step.hasOwnProperty("@func")))) {
+    if (
+        !(
+            Array.isArray(steps) &&
+            steps.every((step) => typeof step === "object" && step !== null && step.hasOwnProperty("@func"))
+        )
+    ) {
         return error("JSON object is not a valid program");
     }
     let hasError = false;
     let functionBody = "";
     let currentStep = 0;
     while (currentStep < steps.length) {
-        functionBody += `  ${currentStep === steps.length - 1 ? `return` : `const step${currentStep + 1} =`} ${exprToString(steps[currentStep])};\n`;
+        functionBody += `  ${
+            currentStep === steps.length - 1 ? `return` : `const step${currentStep + 1} =`
+        } ${exprToString(steps[currentStep])};\n`;
         currentStep++;
     }
-    return hasError ?
-        error("JSON program contains an invalid expression") :
-        success(`import { API } from "./schema";\nfunction program(api: API) {\n${functionBody}}`);
+    return hasError
+        ? error("JSON program contains an invalid expression")
+        : success(`import { API } from "./schema";\nfunction program(api: API) {\n${functionBody}}`);
 
     function exprToString(expr: unknown): string {
-        return typeof expr === "object" && expr !== null ?
-            objectToString(expr as Record<string, unknown>) :
-            JSON.stringify(expr);
+        return typeof expr === "object" && expr !== null
+            ? objectToString(expr as Record<string, unknown>)
+            : JSON.stringify(expr);
     }
 
     function objectToString(obj: Record<string, unknown>) {
@@ -110,20 +117,19 @@ export function createModuleTextFromProgram(jsonObject: object): Result<string> 
             if (typeof index === "number" && index < currentStep && Object.keys(obj).length === 1) {
                 return `step${index + 1}`;
             }
-        }
-        else if (obj.hasOwnProperty("@func")) {
+        } else if (obj.hasOwnProperty("@func")) {
             const func = obj["@func"];
             const hasArgs = obj.hasOwnProperty("@args");
             const args = hasArgs ? obj["@args"] : [];
-            if (typeof func === "string" && (Array.isArray(args)) && Object.keys(obj).length === (hasArgs ? 2 : 1)) {
+            if (typeof func === "string" && Array.isArray(args) && Object.keys(obj).length === (hasArgs ? 2 : 1)) {
                 return `api.${func}(${arrayToString(args)})`;
             }
-        }
-        else if (Array.isArray(obj)) {
+        } else if (Array.isArray(obj)) {
             return `[${arrayToString(obj)}]`;
-        }
-        else {
-            return `{ ${Object.keys(obj).map(key => `${JSON.stringify(key)}: ${exprToString(obj[key])}`).join(", ")} }`;
+        } else {
+            return `{ ${Object.keys(obj)
+                .map((key) => `${JSON.stringify(key)}: ${exprToString(obj[key])}`)
+                .join(", ")} }`;
         }
         hasError = true;
         return "";
@@ -143,7 +149,10 @@ export function createModuleTextFromProgram(jsonObject: object): Result<string> 
  * @param onCall A callback function for handling function calls in the program.
  * @returns A `Promise` with the value of the last expression in the program.
  */
-export async function evaluateJsonProgram(program: Program, onCall: (func: string, args: unknown[]) => Promise<unknown>) {
+export async function evaluateJsonProgram(
+    program: Program,
+    onCall: (func: string, args: unknown[]) => Promise<unknown>,
+) {
     const results: unknown[] = [];
     for (const expr of program["@steps"]) {
         results.push(await evaluate(expr));
@@ -151,9 +160,7 @@ export async function evaluateJsonProgram(program: Program, onCall: (func: strin
     return results.length > 0 ? results[results.length - 1] : undefined;
 
     async function evaluate(expr: unknown): Promise<unknown> {
-        return typeof expr === "object" && expr !== null ?
-            await evaluateObject(expr as Record<string, unknown>) :
-            expr;
+        return typeof expr === "object" && expr !== null ? await evaluateObject(expr as Record<string, unknown>) : expr;
     }
 
     async function evaluateObject(obj: Record<string, unknown>) {
@@ -162,18 +169,15 @@ export async function evaluateJsonProgram(program: Program, onCall: (func: strin
             if (typeof index === "number" && index < results.length) {
                 return results[index];
             }
-        }
-        else if (obj.hasOwnProperty("@func")) {
+        } else if (obj.hasOwnProperty("@func")) {
             const func = obj["@func"];
             const args = obj.hasOwnProperty("@args") ? obj["@args"] : [];
             if (typeof func === "string" && Array.isArray(args)) {
                 return await onCall(func, await evaluateArray(args));
             }
-        }
-        else if (Array.isArray(obj)) {
+        } else if (Array.isArray(obj)) {
             return evaluateArray(obj);
-        }
-        else {
+        } else {
             const values = await Promise.all(Object.values(obj).map(evaluate));
             return Object.fromEntries(Object.keys(obj).map((k, i) => [k, values[i]]));
         }
@@ -200,18 +204,22 @@ export function createProgramTranslator(model: TypeChatLanguageModel, schema: st
     return translator;
 
     function createRequestPrompt(request: string) {
-        return `You are a service that translates user requests into programs represented as JSON using the following TypeScript definitions:\n` +
+        return (
+            `You are a service that translates user requests into programs represented as JSON using the following TypeScript definitions:\n` +
             `\`\`\`\n${programSchemaText}\`\`\`\n` +
             `The programs can call functions from the API defined in the following TypeScript definitions:\n` +
             `\`\`\`\n${translator.validator.schema}\`\`\`\n` +
             `The following is a user request:\n` +
             `"""\n${request}\n"""\n` +
-            `The following is the user request translated into a JSON program object with 2 spaces of indentation and no properties with the value undefined:\n`;
+            `The following is the user request translated into a JSON program object with 2 spaces of indentation and no properties with the value undefined:\n`
+        );
     }
 
     function createRepairPrompt(validationError: string) {
-        return `The JSON program object is invalid for the following reason:\n` +
+        return (
+            `The JSON program object is invalid for the following reason:\n` +
             `"""\n${validationError}\n"""\n` +
-            `The following is a revised JSON program object:\n`;
+            `The following is a revised JSON program object:\n`
+        );
     }
 }

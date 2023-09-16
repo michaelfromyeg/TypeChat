@@ -1,12 +1,12 @@
 /**
  * An object representing a successful operation with a result of type `T`.
  */
-export type Success<T> = { success: true, data: T };
+export type Success<T> = { success: true; data: T };
 
 /**
  * An object representing an operation that failed for the reason given in `message`.
  */
-export type Error = { success: false, message: string };
+export type Error = { success: false; message: string };
 
 /**
  * An object representing a successful or failed operation of type `T`.
